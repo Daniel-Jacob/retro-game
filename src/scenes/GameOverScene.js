@@ -16,6 +16,7 @@ export class GameOverScene extends Phaser.Scene {
     const bandId = this.registry.get(REG.SELECTED_BAND);
     const band = getBand(bandId) || { displayName: '—', themeColor: 0xffffff };
     const score = this.registry.get(REG.LAST_SCORE) || 0;
+    const crashed = !!this.registry.get(REG.CRASHED);
 
     fadeIn(this);
     getAudio(this).stop();
@@ -30,12 +31,17 @@ export class GameOverScene extends Phaser.Scene {
       this.add.image(cx, 190, skaterKey(bandId)).setScale(1.4);
     }
 
-    makeText(this, cx, 270, 'RUN OVER', 'title', { color: hexStr(band.themeColor) }).setOrigin(0.5);
-    makeText(this, cx, 312, band.displayName, 'body', { color: PALETTE.inkDim }).setOrigin(0.5);
+    makeText(this, cx, 270, crashed ? 'WIPEOUT!' : 'RUN OVER', 'title', {
+      color: crashed ? PALETTE.bad : hexStr(band.themeColor),
+    }).setOrigin(0.5);
+    makeText(this, cx, 312, crashed ? `${band.displayName} — you hit a hazard` : band.displayName, 'body', {
+      color: PALETTE.inkDim,
+    }).setOrigin(0.5);
     makeText(this, cx, 352, `FINAL SCORE   ${score}`, 'heading').setOrigin(0.5);
 
     const replay = () => {
       this.registry.set(REG.LAST_SCORE, 0);
+      this.registry.set(REG.CRASHED, false);
       transition(this, 'BandSelectScene');
     };
     button(this, cx, 410, '▶  PLAY AGAIN', { accent: band.themeColor, onClick: replay });

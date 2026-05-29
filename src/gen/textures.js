@@ -326,9 +326,95 @@ function buildProps(scene) {
   }
 }
 
+// --- Lethal hazards (spec: hazards) ---------------------------------------
+// Original pixel art, visually distinct from the player (enemy reds/oranges).
+function buildHazards(scene) {
+  // opposing skater (faces the player; red hoodie)
+  {
+    const g = scene.add.graphics();
+    px(g, 0x000000, 6, 54, 32, 3, 0.25); // shadow
+    px(g, 0x2a2a30, 4, 50, 36, 5); // board
+    px(g, 0xededf2, 8, 55, 7, 3);
+    px(g, 0xededf2, 29, 55, 7, 3);
+    px(g, 0x1f1f26, 14, 38, 7, 13); // legs
+    px(g, 0x1f1f26, 23, 38, 7, 13);
+    px(g, 0xe23b3b, 12, 22, 20, 18); // red hoodie torso
+    px(g, darken(0xe23b3b, 0.8), 28, 22, 4, 18);
+    px(g, 0xe23b3b, 8, 24, 5, 12); // arms
+    px(g, 0xe23b3b, 31, 24, 5, 12);
+    px(g, 0xeeb98c, 16, 10, 12, 12); // head
+    px(g, 0x8a1f1f, 13, 7, 18, 8); // hood
+    px(g, 0x111114, 17, 15, 3, 2); // eyes (facing player)
+    px(g, 0x111114, 23, 15, 3, 2);
+    g.generateTexture('hazard-skater', 44, 58);
+    g.destroy();
+  }
+  // BMX biker
+  {
+    const g = scene.add.graphics();
+    px(g, 0x000000, 8, 42, 40, 3, 0.25); // shadow
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillCircle(13, 33, 11); // back wheel
+    g.fillCircle(43, 33, 11); // front wheel
+    g.fillStyle(0x55555f, 1);
+    g.fillCircle(13, 33, 4);
+    g.fillCircle(43, 33, 4);
+    px(g, 0x2bd1fc, 14, 22, 26, 4); // top tube
+    px(g, 0x2bd1fc, 12, 24, 4, 10); // seat tube
+    px(g, 0x2bd1fc, 40, 14, 4, 20); // fork/steerer
+    px(g, 0x20202a, 10, 18, 9, 4); // seat
+    px(g, 0x20202a, 38, 12, 10, 3); // handlebars
+    px(g, 0xff7a00, 20, 6, 12, 16); // rider torso
+    px(g, 0xff7a00, 30, 12, 8, 5); // arm to bars
+    px(g, 0xeeb98c, 21, -2, 11, 10); // head
+    px(g, 0x1b1b1b, 19, -4, 15, 5); // helmet
+    g.generateTexture('hazard-bmx', 54, 46);
+    g.destroy();
+  }
+  // retro airplane
+  {
+    const g = scene.add.graphics();
+    px(g, 0xcacace, 8, 11, 62, 9); // fuselage
+    px(g, lighten(0xcacace, 1.1), 8, 11, 62, 2);
+    px(g, 0xb6b6c0, 66, 12, 9, 6); // nose
+    px(g, 0x9a9aa6, 26, 4, 20, 9); // wing
+    px(g, 0x9a9aa6, 4, 2, 8, 12); // tail fin
+    px(g, 0x2bd1fc, 16, 13, 3, 3); // windows
+    px(g, 0x2bd1fc, 24, 13, 3, 3);
+    px(g, 0x2bd1fc, 32, 13, 3, 3);
+    px(g, 0x333339, 74, 7, 2, 16); // prop
+    g.generateTexture('plane', 84, 30);
+    g.destroy();
+  }
+  // dropped container / crate
+  {
+    const g = scene.add.graphics();
+    px(g, 0xd9892b, 0, 0, 36, 34);
+    px(g, 0xa9661a, 0, 0, 36, 3);
+    px(g, 0xa9661a, 0, 31, 36, 3);
+    px(g, 0xa9661a, 0, 0, 3, 34);
+    px(g, 0xa9661a, 33, 0, 3, 34);
+    for (let x = 6; x < 32; x += 6) px(g, 0xbf7724, x, 4, 2, 26); // corrugation
+    g.generateTexture('container', 36, 34);
+    g.destroy();
+  }
+  // landing marker (drawn white; tinted/alpha'd in scene)
+  {
+    const g = scene.add.graphics();
+    px(g, 0xffffff, 0, 6, 8, 2);
+    px(g, 0xffffff, 36, 6, 8, 2);
+    px(g, 0xffffff, 20, 0, 3, 6);
+    px(g, 0xffffff, 20, 8, 3, 6);
+    px(g, 0xffffff, 20, 6, 3, 2);
+    g.generateTexture('marker', 44, 14);
+    g.destroy();
+  }
+}
+
 export function generateAllTextures(scene) {
   buildShared(scene);
   buildProps(scene);
+  buildHazards(scene);
   for (const band of getRoster()) {
     const look = LOOKS[band.id] || LOOKS['blink-182'];
     if (!band.characterSprite && !scene.textures.exists(skaterKey(band.id))) {

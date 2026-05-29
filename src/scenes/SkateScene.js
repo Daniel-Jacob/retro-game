@@ -17,6 +17,13 @@ const JUMP_V = -760;
 const RAMP_V = -1040;
 const GRIND_HOP_V = -740;
 
+// Lethal hazards (spec: hazards). Tunable for fairness.
+const GROUND_HAZARD_EVERY = 2300; // ms between ground-hazard spawns
+const GROUND_HAZARD_SPEED = 210; // px/s moving toward the player
+const MAX_GROUND_HAZARDS = 3;
+const PLANE_EVERY = 6800; // ms between airplane passes
+const HAZARD_GRACE_MS = 2600; // no deaths during this opening window
+
 // Core skate gameplay. Side-scrolling level with movement, ramps (launch),
 // grindable rails, air tricks, a combo multiplier, a HUD, and a goal/timer end.
 export class SkateScene extends Phaser.Scene {
@@ -49,6 +56,7 @@ export class SkateScene extends Phaser.Scene {
     this.buildPlayer();
     this.buildInput();
     this.buildHud();
+    this.buildHazards();
     crtOverlay(this);
 
     this.timeLeft = RUN_SECONDS;
@@ -414,9 +422,108 @@ export class SkateScene extends Phaser.Scene {
     this.tweens.add({ targets: this.flash, alpha: 0, scale: 1.4, duration: 600 });
   }
 
+  // ---- hazards (spec: hazards) -------------------------------------------
+  buildHazards() {
+    this.groundHazards = this.physics.add.group({ allowGravity: false });
+    this.containers = this.physics.add.group();
+
+    // opening grace: hazards can't kill for a brief window so the player gets going
+    this.invuln = true;
+    this.time.delayedCall(HAZARD_GRACE_MS, () => {
+      this.invuln = false;
+    });
+
+    this.physics.add.overlap(this.player, this.groundHazards, () => this.crash());
+    this.physics.add.overlap(this.player, this.containers, () => this.crash());
+    this.physics.add.collider(this.containers, this.solids, (c) => this.onContainerLand(c));
+
+    this.time.addEvent({ delay: GROUND_HAZARD_EVERY, loop: true, callback: () => this.spawnGroundHazard() });
+    this.time.addEvent({ delay: PLANE_EVERY, loop: true, startAt: PLANE_EVERY - 1500, callback: () => this.spawnPlane() });
+  }
+
+  spawnGroundHazard() {
+    if (this.ended) return;
+    if (this.groundHazards.countActive(true) >= MAX_GROUND_HAZARDS) return;
+    const scrollX = this.cameras.main.scrollX;
+    const type = Math.random() < 0.5 ? 'hazard-skater' : 'hazard-bmx';
+    const hz = this.groundHazards.create(scrollX + GAME_WIDTH + 50, 0, type);
+    hz.setDepth(3);
+    hz.body.setAllowGravity(false);
+    hz.y = FLOOR_TOP - hz.height / 2;
+    hz.body.setSize(hz.width * 0.7, hz.height * 0.82, true);
+    hz.setVelocityX(-GROUND_HAZARD_SPEED);
+  }
+
+  spawnPlane() {
+    if (this.ended) return;
+    const scrollX = this.cameras.main.scrollX;
+    const plane = this.add.image(scrollX - 100, 70, 'plane').setDepth(3);
+    this.tweens.add({
+      targets: plane,
+      x: scrollX + GAME_WIDTH + 100,
+      duration: 4200,
+      onComplete: () => plane.destroy(),
+    });
+    // drop a container near the player when the plane is roughly overhead
+    this.time.delayedCall(1700, () => {
+      if (this.ended || !plane.active) return;
+      this.dropContainer(this.player.x + Phaser.Math.Between(-50, 90));
+    });
+  }
+
+  dropContainer(targetX) {
+    if (this.ended) return;
+    // telegraph: pulsing landing marker on the floor
+    const marker = this.add
+      .image(targetX, FLOOR_TOP - 8, 'marker')
+      .setTint(0xff3b3b)
+      .setAlpha(0.9)
+      .setDepth(2);
+    this.tweens.add({ targets: marker, alpha: 0.3, duration: 280, yoyo: true, repeat: -1 });
+
+    const c = this.containers.create(targetX, 80, 'container').setDepth(3);
+    c.marker = marker;
+    c.body.setSize(c.width * 0.82, c.height * 0.82, true);
+  }
+
+  onContainerLand(c) {
+    if (c.landed) return;
+    c.landed = true;
+    if (c.marker) {
+      c.marker.destroy();
+      c.marker = null;
+    }
+    c.setVelocity(0, 0);
+    // clears shortly after landing so it doesn't clutter the level
+    this.time.delayedCall(1100, () => {
+      if (c.active) this.tweens.add({ targets: c, alpha: 0, duration: 250, onComplete: () => c.destroy() });
+    });
+  }
+
+  cullHazards() {
+    const left = this.cameras.main.scrollX - 90;
+    this.groundHazards.getChildren().forEach((h) => {
+      if (h.active && h.x < left) h.destroy();
+    });
+  }
+
+  // Collision with any hazard ends the run as a wipeout.
+  crash() {
+    if (this.ended || this.invuln) return;
+    this.ended = true;
+    this.registry.set(REG.CRASHED, true);
+    this.registry.set(REG.LAST_SCORE, this.score); // crash loses the combo, keeps banked score
+    this.showFlash('WIPEOUT!', PALETTE.bad);
+    this.player.setVelocity(0, 0);
+    this.player.setAccelerationX(0);
+    this.cameras.main.shake(250, 0.012);
+    this.time.delayedCall(850, () => transition(this, 'GameOverScene'));
+  }
+
   endRun() {
     if (this.ended) return;
     this.ended = true;
+    this.registry.set(REG.CRASHED, false); // a completed run is not a wipeout
     this.bankCombo();
     this.registry.set(REG.LAST_SCORE, this.score);
     this.time.delayedCall(380, () => transition(this, 'GameOverScene'));
@@ -425,6 +532,7 @@ export class SkateScene extends Phaser.Scene {
   update(time, delta) {
     if (this.ended || !this.player) return;
     if (this.grindCooldown > 0) this.grindCooldown -= delta;
+    this.cullHazards();
 
     const grounded = this.player.body.blocked.down || this.player.body.touching.down;
 

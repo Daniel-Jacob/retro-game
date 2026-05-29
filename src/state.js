@@ -5,4 +5,5 @@ export const REG = {
   SELECTED_BAND: 'selectedBand',
   LAST_SCORE: 'lastScore',
   MUTED: 'muted',
+  CRASHED: 'crashed', // true when the last run ended by hitting a hazard
 };
