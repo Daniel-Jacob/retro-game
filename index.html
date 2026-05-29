@@ -24,10 +24,11 @@
         align-items: center;
         justify-content: center;
       }
-      /* Keep the pixel art crisp when the canvas is scaled by the browser. */
+      /* Smooth the upscale so UI text and the detailed characters read clean
+         rather than blocky. Sprites are generated crisp in the 960x540 buffer;
+         the browser scales that buffer smoothly to the window. */
       #game canvas {
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
+        image-rendering: auto;
       }
     </style>
   </head>

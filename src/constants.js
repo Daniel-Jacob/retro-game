@@ -6,7 +6,8 @@
 // a temporal-dead-zone ReferenceError. Keep this module import-free.
 
 // Fixed internal resolution — the retro "native" canvas. Scale.FIT scales this
-// to the window while preserving aspect; pixelArt keeps it crisp.
-export const GAME_WIDTH = 640;
-export const GAME_HEIGHT = 360;
-export const GRAVITY_Y = 1100;
+// to the window while preserving aspect. Raised to 960x540 (16:9) so UI text and
+// the detailed characters render crisply rather than heavily upscaled.
+export const GAME_WIDTH = 960;
+export const GAME_HEIGHT = 540;
+export const GRAVITY_Y = 1500;

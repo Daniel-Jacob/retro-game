@@ -1,74 +1,102 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants.js';
 import { getRoster } from '../config/bandConfig.js';
-import { skaterKey, hex } from '../gen/textures.js';
+import { skaterKey } from '../gen/textures.js';
+import { DESCRIPTORS } from '../gen/looks.js';
 import { REG } from '../state.js';
+import { PALETTE, makeText, crtOverlay, transition, fadeIn, hexStr } from '../ui/theme.js';
 
-// Band selection (tasks 4.1–4.4): show the five band characters, support
-// keyboard + pointer selection, then lock in the theme and enter the hallway.
+const CARD_W = 168;
+const CARD_H = 304;
+
+// Band selection: polished, themed character cards with focus glow + selected
+// state. Each card shows a recognizable, distinct band character.
 export class BandSelectScene extends Phaser.Scene {
   constructor() {
     super('BandSelectScene');
   }
 
   create() {
+    fadeIn(this);
+    this.cameras.main.setBackgroundColor(PALETTE.bgCss);
     this.roster = getRoster();
     this.index = 0;
     this.cards = [];
+    this.locked = false;
 
-    this.cameras.main.setBackgroundColor('#15151f');
-    this.add
-      .text(GAME_WIDTH / 2, 34, 'PICK YOUR BAND', {
-        fontFamily: 'Courier New, monospace',
-        fontSize: '28px',
-        color: '#ffffff',
-      })
-      .setOrigin(0.5);
-    this.add
-      .text(GAME_WIDTH / 2, 64, '← →  to choose    ENTER / click to skate', {
-        fontFamily: 'Courier New, monospace',
-        fontSize: '13px',
-        color: '#8a8aa0',
-      })
-      .setOrigin(0.5);
+    // backdrop accent band
+    this.add.rectangle(0, 96, GAME_WIDTH, 200, 0x14141f).setOrigin(0, 0);
+
+    makeText(this, GAME_WIDTH / 2, 50, 'PICK YOUR BAND', 'title').setOrigin(0.5);
+    makeText(this, GAME_WIDTH / 2, 92, '◄  ►  choose      ENTER / click  to skate', 'small').setOrigin(0.5);
 
     const n = this.roster.length;
-    const slot = GAME_WIDTH / n;
+    const gap = 16;
+    const totalW = n * CARD_W + (n - 1) * gap;
+    const startX = (GAME_WIDTH - totalW) / 2 + CARD_W / 2;
+    const cy = 300;
+
     this.roster.forEach((band, i) => {
-      const x = slot * i + slot / 2;
-      const y = GAME_HEIGHT / 2 + 10;
-
-      const card = this.add.rectangle(x, y, slot - 16, 190, 0x20202c).setStrokeStyle(3, 0x35354a);
-      const sprite = this.add.image(x, y - 18, skaterKey(band.id)).setScale(2.2);
-      const label = this.add
-        .text(x, y + 74, band.displayName, {
-          fontFamily: 'Courier New, monospace',
-          fontSize: '14px',
-          color: '#ffffff',
-          align: 'center',
-          wordWrap: { width: slot - 24 },
-        })
-        .setOrigin(0.5);
-
-      // Pointer/tap selection (task 4.3).
-      card
-        .setInteractive({ useHandCursor: true })
-        .on('pointerover', () => this.setIndex(i))
-        .on('pointerdown', () => {
-          this.setIndex(i);
-          this.confirm();
-        });
-
-      this.cards.push({ band, card, sprite, label });
+      const x = startX + i * (CARD_W + gap);
+      this.cards.push(this.buildCard(band, x, cy, i));
     });
 
-    // Keyboard navigation (task 4.2).
     this.input.keyboard.on('keydown-LEFT', () => this.move(-1));
     this.input.keyboard.on('keydown-RIGHT', () => this.move(1));
     this.input.keyboard.on('keydown-ENTER', () => this.confirm());
     this.input.keyboard.on('keydown-SPACE', () => this.confirm());
 
+    crtOverlay(this);
     this.setIndex(0);
+  }
+
+  buildCard(band, x, y, i) {
+    const container = this.add.container(x, y);
+
+    const glow = this.add.graphics();
+    glow.fillStyle(band.themeColor, 0.22);
+    glow.fillRoundedRect(-CARD_W / 2 - 8, -CARD_H / 2 - 8, CARD_W + 16, CARD_H + 16, 18);
+    glow.setVisible(false);
+
+    const bg = this.add.graphics();
+
+    const sprite = this.add.image(0, -34, skaterKey(band.id)).setScale(1.55);
+
+    const name = makeText(this, 0, 92, band.displayName, 'heading', {
+      fontSize: '17px',
+      align: 'center',
+      wordWrap: { width: CARD_W - 12 },
+    }).setOrigin(0.5);
+    const desc = makeText(this, 0, 124, DESCRIPTORS[band.id] || '', 'small', {
+      align: 'center',
+      wordWrap: { width: CARD_W - 24 },
+    }).setOrigin(0.5);
+
+    container.add([glow, bg, sprite, name, desc]);
+
+    const hit = this.add
+      .zone(x, y, CARD_W, CARD_H)
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => this.setIndex(i))
+      .on('pointerdown', () => {
+        this.setIndex(i);
+        this.confirm();
+      });
+
+    return { band, container, glow, bg, sprite, name, desc, hit };
+  }
+
+  drawCardBg(card, active) {
+    const { bg, band } = card;
+    bg.clear();
+    bg.fillStyle(active ? PALETTE.surfaceLight : PALETTE.surface, 1);
+    bg.fillRoundedRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, 14);
+    bg.lineStyle(active ? 4 : 2, active ? band.themeColor : PALETTE.stroke, 1);
+    bg.strokeRoundedRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, 14);
+    // floor line under the character
+    bg.fillStyle(band.themeColor, active ? 0.9 : 0.4);
+    bg.fillRect(-CARD_W / 2 + 16, 60, CARD_W - 32, 3);
   }
 
   move(dir) {
@@ -76,25 +104,29 @@ export class BandSelectScene extends Phaser.Scene {
     this.setIndex((this.index + dir + n) % n);
   }
 
-  // Highlight the focused option (task 4.2 focus highlight).
   setIndex(i) {
     this.index = i;
-    this.cards.forEach((c, idx) => {
+    this.cards.forEach((card, idx) => {
       const active = idx === i;
-      const theme = c.band.themeColor;
-      c.card.setStrokeStyle(active ? 5 : 3, active ? theme : 0x35354a);
-      c.card.setFillStyle(active ? 0x2b2b3c : 0x20202c);
-      c.label.setColor(active ? hex(theme) : '#ffffff');
-      this.tweens.add({ targets: c.sprite, scale: active ? 2.6 : 2.2, duration: 120 });
+      this.drawCardBg(card, active);
+      card.glow.setVisible(active);
+      card.name.setColor(active ? hexStr(card.band.themeColor) : PALETTE.ink);
+      this.tweens.add({
+        targets: card.container,
+        scale: active ? 1.06 : 0.98,
+        y: active ? 296 : 300,
+        duration: 140,
+        ease: 'Quad.out',
+      });
     });
   }
 
-  // Lock in the selection: store band id (task 4.4 / 3.4) and enter hallway.
   confirm() {
+    if (this.locked) return;
+    this.locked = true;
     const band = this.roster[this.index];
     this.registry.set(REG.SELECTED_BAND, band.id);
-    // NOTE: audio is started in HallwayScene — this click is the user gesture
-    // that unlocks autoplay, and the hallway is the first post-selection scene.
-    this.scene.start('HallwayScene');
+    // selection click is the user gesture; music starts in the hallway.
+    transition(this, 'HallwayScene');
   }
 }

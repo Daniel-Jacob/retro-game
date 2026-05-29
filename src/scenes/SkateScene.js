@@ -1,18 +1,23 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants.js';
 import { getBand } from '../config/bandConfig.js';
-import { skaterKey, hex } from '../gen/textures.js';
+import { skaterKey } from '../gen/textures.js';
 import { getAudio } from '../audio/AudioManager.js';
 import { REG } from '../state.js';
+import { PALETTE, makeText, panel, crtOverlay, transition, fadeIn, hexStr } from '../ui/theme.js';
 
-const WORLD_W = 4200;
-const FLOOR_TOP = GAME_HEIGHT - 36; // y of the top surface of the ground
+const WORLD_W = 5200;
+const FLOOR_TOP = GAME_HEIGHT - 44; // y of the top surface of the ground
 const RUN_SECONDS = 75;
-const TRICK_MS = 420; // time a trick takes to land cleanly
+const TRICK_MS = 420;
 
-// Core skate gameplay (tasks 6.1–6.8). Side-scrolling level with movement,
-// ramps (launch), grindable rails, air tricks, a combo multiplier, a HUD, and a
-// goal/timer end condition.
+// Tuned for the 960x540 canvas + 1500 gravity.
+const JUMP_V = -760;
+const RAMP_V = -1040;
+const GRIND_HOP_V = -740;
+
+// Core skate gameplay. Side-scrolling level with movement, ramps (launch),
+// grindable rails, air tricks, a combo multiplier, a HUD, and a goal/timer end.
 export class SkateScene extends Phaser.Scene {
   constructor() {
     super('SkateScene');
@@ -26,11 +31,11 @@ export class SkateScene extends Phaser.Scene {
       return;
     }
 
-    getAudio(this).playBand(bandId); // keep the music going (no-op if already on)
+    fadeIn(this);
+    getAudio(this).playBand(bandId);
 
-    // --- run state ---
     this.score = 0;
-    this.combo = 0; // pending points accrued since last clean landing
+    this.combo = 0;
     this.multiplier = 1;
     this.grinding = false;
     this.grindRailEnd = 0;
@@ -43,8 +48,8 @@ export class SkateScene extends Phaser.Scene {
     this.buildPlayer();
     this.buildInput();
     this.buildHud();
+    crtOverlay(this);
 
-    // Run timer fallback end condition (task 6.8).
     this.timeLeft = RUN_SECONDS;
     this.time.addEvent({
       delay: 1000,
@@ -57,38 +62,37 @@ export class SkateScene extends Phaser.Scene {
     });
   }
 
-  // ---- world / level (task 6.1, 6.3, 6.4) --------------------------------
   buildWorld() {
     this.cameras.main.setBounds(0, 0, WORLD_W, GAME_HEIGHT);
     this.physics.world.setBounds(0, 0, WORLD_W, GAME_HEIGHT);
-    this.cameras.main.setBackgroundColor('#181826');
+    this.cameras.main.setBackgroundColor('#10101a');
 
-    // Parallax-ish back band-color glow strip.
-    this.add.rectangle(0, 60, WORLD_W, 90, this.band.themeColor, 0.08).setOrigin(0, 0);
+    // layered band-color glow backdrop
+    this.add.rectangle(0, 70, WORLD_W, 140, this.band.themeColor, 0.07).setOrigin(0, 0);
+    this.add.rectangle(0, 150, WORLD_W, 90, this.band.themeColor, 0.05).setOrigin(0, 0);
 
-    // Visual + solid floor.
-    this.add.tileSprite(0, FLOOR_TOP, WORLD_W, 36, 'ground').setOrigin(0, 0);
+    this.add.tileSprite(0, FLOOR_TOP, WORLD_W, 44, 'ground').setOrigin(0, 0);
+    this.add.rectangle(0, FLOOR_TOP, WORLD_W, 3, this.band.themeColor, 0.6).setOrigin(0, 0);
     this.solids = this.physics.add.staticGroup();
-    this.addSolid(WORLD_W / 2, FLOOR_TOP + 18, WORLD_W, 36);
+    this.addSolid(WORLD_W / 2, FLOOR_TOP + 22, WORLD_W, 44);
 
-    // A raised platform to skate onto.
-    this.add.tileSprite(1500, FLOOR_TOP - 90, 320, 16, 'ground').setOrigin(0, 0);
-    this.addSolid(1500 + 160, FLOOR_TOP - 90 + 8, 320, 16);
+    // raised platform
+    this.add.tileSprite(1900, FLOOR_TOP - 120, 360, 18, 'ground').setOrigin(0, 0);
+    this.addSolid(1900 + 180, FLOOR_TOP - 120 + 9, 360, 18);
 
-    // Ramps — visual wedge + an overlap launch zone (task 6.3).
+    // ramps (launch zones)
     this.launchZones = this.physics.add.staticGroup();
-    this.addRamp(820, false); // launch up-right
-    this.addRamp(2550, false);
-    this.addRamp(3300, true); // mirrored
+    this.addRamp(1000, false);
+    this.addRamp(3100, false);
+    this.addRamp(4100, true);
 
-    // Grind rails — visual bar + a thin top sensor zone (task 6.4).
+    // grind rails
     this.grindZones = this.physics.add.staticGroup();
-    this.addRail(1180, FLOOR_TOP - 70, 260);
-    this.addRail(2000, FLOOR_TOP - 60, 300);
-    this.addRail(2900, FLOOR_TOP - 96, 240);
+    this.addRail(1440, FLOOR_TOP - 90, 320);
+    this.addRail(2500, FLOOR_TOP - 80, 360);
+    this.addRail(3600, FLOOR_TOP - 120, 300);
 
-    // Goal flag at the end (task 6.8).
-    this.goal = this.physics.add.staticImage(WORLD_W - 80, FLOOR_TOP - 40, 'goal');
+    this.goal = this.physics.add.staticImage(WORLD_W - 90, FLOOR_TOP - 48, 'goal');
   }
 
   addSolid(cx, cy, w, h) {
@@ -101,8 +105,7 @@ export class SkateScene extends Phaser.Scene {
   addRamp(x, mirrored) {
     const img = this.add.image(x, FLOOR_TOP, 'ramp').setOrigin(0, 1);
     img.setFlipX(mirrored);
-    // Launch zone sits over the ramp face.
-    const zone = this.add.rectangle(x + 32, FLOOR_TOP - 32, 64, 64, 0x000000, 0);
+    const zone = this.add.rectangle(x + 40, FLOOR_TOP - 40, 80, 80, 0x000000, 0);
     this.physics.add.existing(zone, true);
     zone.launchDir = mirrored ? -1 : 1;
     this.launchZones.add(zone);
@@ -110,23 +113,22 @@ export class SkateScene extends Phaser.Scene {
 
   addRail(x, topY, len) {
     this.add.tileSprite(x, topY, len, 10, 'rail').setOrigin(0, 0);
-    // Posts.
     this.add.rectangle(x + 6, topY + 5, 4, FLOOR_TOP - topY, 0x80808c).setOrigin(0.5, 0);
     this.add.rectangle(x + len - 6, topY + 5, 4, FLOOR_TOP - topY, 0x80808c).setOrigin(0.5, 0);
-    const zone = this.add.rectangle(x + len / 2, topY - 2, len, 12, 0x000000, 0);
+    const zone = this.add.rectangle(x + len / 2, topY - 2, len, 14, 0x000000, 0);
     this.physics.add.existing(zone, true);
     zone.railTop = topY;
     zone.railEnd = x + len;
     this.grindZones.add(zone);
   }
 
-  // ---- player (task 6.2) -------------------------------------------------
   buildPlayer() {
-    this.player = this.physics.add.sprite(80, FLOOR_TOP - 60, skaterKey(this.registry.get(REG.SELECTED_BAND)));
-    this.player.setScale(1.2);
-    this.player.body.setSize(26, 42).setOffset(5, 4);
+    this.player = this.physics.add.sprite(90, FLOOR_TOP - 90, skaterKey(this.registry.get(REG.SELECTED_BAND)));
+    this.player.setScale(0.82);
+    // native sprite is 84x120; collide on the body, not the board/limbs.
+    this.player.body.setSize(42, 104).setOffset(21, 8);
     this.player.setCollideWorldBounds(true);
-    this.player.setMaxVelocity(420, 1400);
+    this.player.setMaxVelocity(480, 2000);
 
     this.physics.add.collider(this.player, this.solids);
     this.physics.add.overlap(this.player, this.launchZones, (_p, z) => this.tryLaunch(z));
@@ -134,7 +136,7 @@ export class SkateScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.goal, () => this.endRun());
 
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.cameras.main.setDeadzone(120, 80);
+    this.cameras.main.setDeadzone(180, 120);
   }
 
   buildInput() {
@@ -152,40 +154,33 @@ export class SkateScene extends Phaser.Scene {
     this.keys.mute.on('down', () => this.toggleMute());
   }
 
-  // ---- HUD (task 6.7) + mute control (task 7.4) --------------------------
   buildHud() {
-    const style = { fontFamily: 'Courier New, monospace', fontSize: '16px', color: '#ffffff' };
-    this.scoreText = this.add.text(12, 10, '', style).setScrollFactor(0);
-    this.comboText = this.add
-      .text(12, 30, '', { ...style, fontSize: '14px', color: hex(this.band.themeColor) })
-      .setScrollFactor(0);
-    this.timerText = this.add
-      .text(GAME_WIDTH - 12, 10, '', style)
-      .setOrigin(1, 0)
-      .setScrollFactor(0);
+    panel(this, 10, 10, 250, 56, { radius: 10, alpha: 0.9 }).setScrollFactor(0).setDepth(50);
+    this.scoreText = makeText(this, 24, 18, '', 'hud').setScrollFactor(0).setDepth(51);
+    this.comboText = makeText(this, 24, 42, '', 'small', { color: hexStr(this.band.themeColor) })
+      .setScrollFactor(0)
+      .setDepth(51);
 
-    this.muteBtn = this.add
-      .text(GAME_WIDTH - 12, 32, '', { ...style, fontSize: '13px', color: '#9a9ab0' })
+    panel(this, GAME_WIDTH - 150, 10, 140, 56, { radius: 10, alpha: 0.9 }).setScrollFactor(0).setDepth(50);
+    this.timerText = makeText(this, GAME_WIDTH - 24, 18, '', 'hud').setOrigin(1, 0).setScrollFactor(0).setDepth(51);
+    this.muteBtn = makeText(this, GAME_WIDTH - 24, 44, '', 'small')
       .setOrigin(1, 0)
       .setScrollFactor(0)
+      .setDepth(51)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.toggleMute());
     this.refreshMuteLabel();
 
-    this.flash = this.add
-      .text(GAME_WIDTH / 2, 90, '', {
-        fontFamily: 'Courier New, monospace',
-        fontSize: '22px',
-        fontStyle: 'bold',
-        color: '#ffffff',
-      })
+    this.flash = makeText(this, GAME_WIDTH / 2, 130, '', 'title', { fontSize: '34px' })
       .setOrigin(0.5)
       .setScrollFactor(0)
+      .setDepth(60)
       .setAlpha(0);
   }
 
   refreshMuteLabel() {
-    this.muteBtn.setText(getAudio(this).isMuted() ? '[M] sound: OFF' : '[M] sound: ON');
+    this.muteBtn.setText(getAudio(this).isMuted() ? '♪ OFF [M]' : '♪ ON [M]');
+    this.muteBtn.setColor(getAudio(this).isMuted() ? PALETTE.muted : PALETTE.good);
   }
 
   toggleMute() {
@@ -193,16 +188,15 @@ export class SkateScene extends Phaser.Scene {
     this.refreshMuteLabel();
   }
 
-  // ---- actions -----------------------------------------------------------
   jump() {
     if (this.ended) return;
     if (this.grinding) {
       this.exitGrind();
-      this.player.setVelocityY(-520);
+      this.player.setVelocityY(GRIND_HOP_V);
       return;
     }
     if (this.player.body.blocked.down || this.player.body.touching.down) {
-      this.player.setVelocityY(-560);
+      this.player.setVelocityY(JUMP_V);
     }
   }
 
@@ -210,18 +204,17 @@ export class SkateScene extends Phaser.Scene {
     if (this.ended || this.grinding) return;
     if (!(this.player.body.blocked.down || this.player.body.touching.down)) return;
     const speed = Math.abs(this.player.body.velocity.x);
-    if (speed < 120) return; // need momentum to launch (spec)
-    this.player.setVelocityY(-720);
-    this.player.setVelocityX(zone.launchDir * Math.max(260, speed));
+    if (speed < 140) return;
+    this.player.setVelocityY(RAMP_V);
+    this.player.setVelocityX(zone.launchDir * Math.max(320, speed));
     this.showFlash('RAMP!');
   }
 
   tryGrind(zone) {
     if (this.ended || this.grinding) return;
     if (this.grindCooldown > 0) return;
-    // Must be coming down onto the rail top with horizontal speed (spec 6.4).
     if (this.player.body.velocity.y < -20) return;
-    if (Math.abs(this.player.body.velocity.x) < 60) return;
+    if (Math.abs(this.player.body.velocity.x) < 70) return;
     this.enterGrind(zone);
   }
 
@@ -231,7 +224,7 @@ export class SkateScene extends Phaser.Scene {
     this.player.body.setAllowGravity(false);
     this.player.setVelocityY(0);
     this.player.y = zone.railTop - this.player.body.halfHeight - 2;
-    this.multiplier += 1; // entering a grind extends the combo chain
+    this.multiplier += 1;
     this.showFlash('GRIND!');
   }
 
@@ -244,7 +237,7 @@ export class SkateScene extends Phaser.Scene {
 
   doTrick(_name, spin = 360) {
     if (this.ended || this.grinding) return;
-    if (this.player.body.blocked.down || this.player.body.touching.down) return; // air only
+    if (this.player.body.blocked.down || this.player.body.touching.down) return;
     if (this.trickActive) return;
     this.trickActive = true;
     this.trickStart = this.time.now;
@@ -254,7 +247,6 @@ export class SkateScene extends Phaser.Scene {
       duration: TRICK_MS,
       onComplete: () => {
         if (!this.trickActive) return;
-        // Landed-in-air completion: bank trick points into the pending combo.
         this.trickActive = false;
         this.player.setAngle(0);
         this.combo += 100;
@@ -265,12 +257,11 @@ export class SkateScene extends Phaser.Scene {
   }
 
   bail() {
-    // Landed while a trick was still in progress (spec 6.6).
     this.trickActive = false;
     this.player.setAngle(0);
     this.combo = 0;
     this.multiplier = 1;
-    this.showFlash('BAIL!', '#ff6b6b');
+    this.showFlash('BAIL!', PALETTE.bad);
   }
 
   bankCombo() {
@@ -280,12 +271,12 @@ export class SkateScene extends Phaser.Scene {
     }
     const gained = this.combo * this.multiplier;
     this.score += gained;
-    this.showFlash(`+${gained}`, hex(this.band.themeColor));
+    this.showFlash(`+${gained}`, hexStr(this.band.themeColor));
     this.combo = 0;
     this.multiplier = 1;
   }
 
-  showFlash(text, color = '#ffffff') {
+  showFlash(text, color = PALETTE.ink) {
     this.flash.setText(text).setColor(color).setAlpha(1).setScale(1);
     this.tweens.add({ targets: this.flash, alpha: 0, scale: 1.4, duration: 600 });
   }
@@ -295,25 +286,22 @@ export class SkateScene extends Phaser.Scene {
     this.ended = true;
     this.bankCombo();
     this.registry.set(REG.LAST_SCORE, this.score);
-    this.time.delayedCall(400, () => this.scene.start('GameOverScene'));
+    this.time.delayedCall(380, () => transition(this, 'GameOverScene'));
   }
 
-  // ---- loop (task 6.2 movement + state transitions) ----------------------
   update(time, delta) {
     if (this.ended || !this.player) return;
     if (this.grindCooldown > 0) this.grindCooldown -= delta;
 
     const grounded = this.player.body.blocked.down || this.player.body.touching.down;
 
-    // Grinding: lock to rail, accrue score, exit at rail end.
     if (this.grinding) {
       this.player.setVelocityY(0);
-      if (this.player.body.velocity.x === 0) this.player.setVelocityX(220 * (this.player.flipX ? -1 : 1));
-      this.combo += Math.round((delta / 1000) * 60); // score over duration
+      if (this.player.body.velocity.x === 0) this.player.setVelocityX(260 * (this.player.flipX ? -1 : 1));
+      this.combo += Math.round((delta / 1000) * 60);
       if (this.player.x >= this.grindRailEnd) this.exitGrind();
     } else {
-      // Horizontal movement (task 6.2).
-      const accel = grounded ? 900 : 500;
+      const accel = grounded ? 1100 : 600;
       if (this.cursors.left.isDown) {
         this.player.setAccelerationX(-accel);
         this.player.setFlipX(true);
@@ -326,21 +314,19 @@ export class SkateScene extends Phaser.Scene {
       }
     }
 
-    // Landing transitions.
     if (grounded && !this.grinding) {
       if (this.trickActive && time - this.trickStart < TRICK_MS - 40) {
-        this.bail(); // landed mid-trick
+        this.bail();
       } else if (this.airborne) {
-        this.bankCombo(); // clean landing banks the chain
+        this.bankCombo();
       }
       this.airborne = false;
     } else if (!grounded && !this.grinding) {
       this.airborne = true;
     }
 
-    // HUD.
     this.scoreText.setText(`SCORE ${this.score}`);
-    this.comboText.setText(this.combo > 0 ? `COMBO ${this.combo} x${this.multiplier}` : '');
-    this.timerText.setText(`TIME ${Math.max(0, this.timeLeft)}`);
+    this.comboText.setText(this.combo > 0 ? `COMBO ${this.combo}  x${this.multiplier}` : 'chain tricks for combos');
+    this.timerText.setText(`${Math.max(0, this.timeLeft)}s`);
   }
 }
