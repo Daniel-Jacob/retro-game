@@ -24,6 +24,15 @@ const MAX_GROUND_HAZARDS = 3;
 const PLANE_EVERY = 6800; // ms between airplane passes
 const HAZARD_GRACE_MS = 2600; // no deaths during this opening window
 
+// Named air tricks (spec: skate-gameplay → Named air tricks). Tunable: key,
+// points (harder = more), and animation style. All animate within TRICK_MS so
+// the bail-on-mid-trick-landing timing is unchanged.
+const TRICKS = {
+  ollie: { label: 'OLLIE', key: 'Z', points: 50, anim: 'ollie' },
+  shoveit: { label: 'POP SHOVE-IT', key: 'C', points: 100, anim: 'shove' },
+  kickflip: { label: 'KICKFLIP', key: 'X', points: 150, anim: 'flip' },
+};
+
 // Core skate gameplay. Side-scrolling level with movement, ramps (launch),
 // grindable rails, air tricks, a combo multiplier, a HUD, and a goal/timer end.
 export class SkateScene extends Phaser.Scene {
@@ -274,14 +283,16 @@ export class SkateScene extends Phaser.Scene {
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys({
       jump: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      trickA: Phaser.Input.Keyboard.KeyCodes.Z,
-      trickB: Phaser.Input.Keyboard.KeyCodes.X,
+      ollie: Phaser.Input.Keyboard.KeyCodes.Z,
+      shoveit: Phaser.Input.Keyboard.KeyCodes.C,
+      kickflip: Phaser.Input.Keyboard.KeyCodes.X,
       mute: Phaser.Input.Keyboard.KeyCodes.M,
     });
     this.input.keyboard.on('keydown-UP', () => this.jump());
     this.keys.jump.on('down', () => this.jump());
-    this.keys.trickA.on('down', () => this.doTrick('kickflip', 360));
-    this.keys.trickB.on('down', () => this.doTrick('grab', -360));
+    this.keys.ollie.on('down', () => this.doTrick('ollie'));
+    this.keys.shoveit.on('down', () => this.doTrick('shoveit'));
+    this.keys.kickflip.on('down', () => this.doTrick('kickflip'));
     this.keys.mute.on('down', () => this.toggleMute());
   }
 
@@ -301,6 +312,18 @@ export class SkateScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.toggleMute());
     this.refreshMuteLabel();
+
+    // controls hint — names each trick and its key
+    makeText(
+      this,
+      GAME_WIDTH / 2,
+      GAME_HEIGHT - 20,
+      '↑ jump      Z ollie      X kickflip      C pop shove-it',
+      'small',
+    )
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(50);
 
     this.flash = makeText(this, GAME_WIDTH / 2, 130, '', 'title', { fontSize: '34px' })
       .setOrigin(0.5)
@@ -376,30 +399,74 @@ export class SkateScene extends Phaser.Scene {
     this.player.body.setAllowGravity(true);
   }
 
-  doTrick(_name, spin = 360) {
+  // Perform a named air trick (ollie / shoveit / kickflip). Air-only; each has a
+  // distinct animation within TRICK_MS and awards its own points to the combo.
+  doTrick(trickId) {
     if (this.ended || this.grinding) return;
-    if (this.player.body.blocked.down || this.player.body.touching.down) return;
+    if (this.player.body.blocked.down || this.player.body.touching.down) return; // air only
     if (this.trickActive) return;
+    const def = TRICKS[trickId];
+    if (!def) return;
+
     this.trickActive = true;
     this.trickStart = this.time.now;
-    this.tweens.add({
-      targets: this.player,
-      angle: this.player.angle + spin,
-      duration: TRICK_MS,
-      onComplete: () => {
-        if (!this.trickActive) return;
-        this.trickActive = false;
-        this.player.setAngle(0);
-        this.combo += 100;
-        this.multiplier += 1;
-        this.showFlash('+TRICK');
-      },
-    });
+    this._trickBaseScale = Math.abs(this.player.scaleX);
+    this._trickFlip = this.player.flipX;
+
+    const done = () => {
+      if (!this.trickActive) return; // bailed before completing
+      this.trickActive = false;
+      this.resetTrickTransform();
+      this.combo += def.points;
+      this.multiplier += 1;
+      this.showFlash(`${def.label} +${def.points}`, hexStr(this.band.themeColor));
+    };
+
+    if (def.anim === 'flip') {
+      // full 360° board flip
+      this.trickTween = this.tweens.add({
+        targets: this.player,
+        angle: this.player.angle + 360,
+        duration: TRICK_MS,
+        onComplete: done,
+      });
+    } else if (def.anim === 'ollie') {
+      // quick nose-lift and back down
+      this.trickTween = this.tweens.add({
+        targets: this.player,
+        angle: -18,
+        duration: TRICK_MS / 2,
+        yoyo: true,
+        onComplete: done,
+      });
+    } else {
+      // pop shove-it: squash + slight tilt, board spins under (flip toggle)
+      this.trickTween = this.tweens.add({
+        targets: this.player,
+        scaleX: this._trickBaseScale * 0.5,
+        angle: 16,
+        duration: TRICK_MS / 2,
+        yoyo: true,
+        onYoyo: () => this.player.setFlipX(!this.player.flipX),
+        onComplete: done,
+      });
+    }
+  }
+
+  resetTrickTransform() {
+    const base = this._trickBaseScale || 0.82;
+    this.player.setAngle(0);
+    this.player.setScale(base, base);
+    this.player.setFlipX(this._trickFlip);
   }
 
   bail() {
     this.trickActive = false;
-    this.player.setAngle(0);
+    if (this.trickTween) {
+      this.trickTween.stop(); // stop the in-flight trick animation before resetting
+      this.trickTween = null;
+    }
+    this.resetTrickTransform();
     this.combo = 0;
     this.multiplier = 1;
     this.showFlash('BAIL!', PALETTE.bad);
