@@ -262,8 +262,73 @@ function buildShared(scene) {
   }
 }
 
+// --- Retro prop obstacles --------------------------------------------------
+// Original pixel art (no trademarks). Short enough to clear with a normal jump.
+export const PROP_TYPES = [
+  { type: 'record', key: 'prop-record', w: 50, h: 34 },
+  { type: 'tape', key: 'prop-tape', w: 56, h: 36 },
+  { type: 'soda', key: 'prop-soda', w: 44, h: 46, label: 'SODA' },
+];
+
+function buildProps(scene) {
+  // record player
+  {
+    const g = scene.add.graphics();
+    px(g, 0x5a4636, 0, 16, 50, 18); // wood base
+    px(g, lighten(0x5a4636, 1.2), 0, 16, 50, 2);
+    px(g, 0x33333c, 2, 12, 46, 6); // deck plate
+    px(g, 0x141418, 8, 4, 28, 12); // platter
+    px(g, 0x26262c, 8, 8, 28, 1); // groove
+    px(g, 0xe23b3b, 18, 7, 7, 6); // label
+    px(g, 0xdddddd, 21, 9, 2, 2); // spindle
+    px(g, 0xb8b8c0, 30, 4, 13, 2); // tonearm
+    px(g, 0xb8b8c0, 41, 4, 2, 8);
+    px(g, 0x222226, 5, 20, 5, 4); // knobs
+    px(g, 0x222226, 12, 20, 5, 4);
+    g.generateTexture('prop-record', 50, 34);
+    g.destroy();
+  }
+  // tape recorder
+  {
+    const g = scene.add.graphics();
+    px(g, 0x3a3a44, 0, 8, 56, 28); // body
+    px(g, 0x4a4a56, 0, 8, 56, 3); // top highlight
+    px(g, 0x20202a, 7, 12, 42, 16); // window
+    px(g, 0xeaeaea, 11, 14, 12, 12); // reel L
+    px(g, 0xeaeaea, 33, 14, 12, 12); // reel R
+    px(g, 0x888892, 16, 19, 3, 3); // hub L
+    px(g, 0x888892, 38, 19, 3, 3); // hub R
+    px(g, 0xcacace, 6, 30, 7, 3); // buttons
+    px(g, 0xcacace, 15, 30, 7, 3);
+    px(g, 0xcacace, 24, 30, 7, 3);
+    px(g, 0xe23b3b, 47, 30, 6, 3); // record button
+    g.generateTexture('prop-tape', 56, 36);
+    g.destroy();
+  }
+  // generic retro soda stand (no trademark; the word "SODA" is overlaid in-scene)
+  {
+    const g = scene.add.graphics();
+    px(g, 0xd23b32, 0, 0, 44, 46); // red cabinet
+    px(g, 0xa82820, 0, 0, 4, 46); // edges/trim
+    px(g, 0xa82820, 40, 0, 4, 46);
+    px(g, 0xa82820, 0, 42, 44, 4);
+    px(g, lighten(0xd23b32, 1.15), 4, 0, 36, 2);
+    px(g, 0xf4f4f4, 8, 6, 28, 16); // white display panel
+    px(g, 0xd23b32, 8, 14, 28, 3); // red swoosh stripe
+    px(g, 0x222226, 10, 26, 5, 4); // selection buttons
+    px(g, 0x222226, 18, 26, 5, 4);
+    px(g, 0x222226, 26, 26, 5, 4);
+    px(g, 0x111114, 33, 25, 3, 8); // coin slot
+    px(g, 0x101014, 10, 35, 24, 5); // dispenser slot
+    px(g, 0x3aa0c0, 14, 35, 4, 5); // bottle hint
+    g.generateTexture('prop-soda', 44, 46);
+    g.destroy();
+  }
+}
+
 export function generateAllTextures(scene) {
   buildShared(scene);
+  buildProps(scene);
   for (const band of getRoster()) {
     const look = LOOKS[band.id] || LOOKS['blink-182'];
     if (!band.characterSprite && !scene.textures.exists(skaterKey(band.id))) {

@@ -8,3 +8,4 @@ dist/
 
 # Separate nested repo containing live Spotify credentials — never commit.
 spotify-mcp-server/
+.idea/
