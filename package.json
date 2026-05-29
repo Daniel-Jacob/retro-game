@@ -1,0 +1,22 @@
+{
+  "name": "retro-skate-game",
+  "version": "0.1.0",
+  "description": "A retro 2D pixel-art skateboarding game themed around early-2000s pop-punk/rock bands.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5173",
+    "start": "node server/index.js",
+    "serve": "npm run build && npm run start"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

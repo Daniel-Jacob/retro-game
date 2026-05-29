@@ -1,0 +1,10 @@
+{
+  "_comment": "band id -> iTunes track id. Find an id at https://itunes.apple.com/search?term=ARTIST+SONG&entity=song (the 'trackId' field), or from an Apple Music share link. The backend resolves it to a 30-second previewUrl via the iTunes Lookup API (no auth needed). Leave '' to keep a band silent; pick tracks whose previewUrl is non-null.",
+  "tracks": {
+    "blink-182": { "trackId": "1440840510", "note": "All the Small Things" },
+    "green-day": { "trackId": "1161539473", "note": "Holiday (American Idiot not available; swap if you find it)" },
+    "linkin-park": { "trackId": "590431785", "note": "In the End" },
+    "sum-41": { "trackId": "1440659999", "note": "Fat Lip" },
+    "avril-lavigne": { "trackId": "315025826", "note": "Sk8er Boi" }
+  }
+}
